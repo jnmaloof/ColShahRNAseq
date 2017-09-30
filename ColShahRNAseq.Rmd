@@ -1,0 +1,142 @@
+---
+title: "Col Shah RNAseq Notebook"
+output: html_notebook
+---
+
+Preliminary analysis of Col and Shah shade avoidance RNAseq to find genes that are differntially responsive to shade.
+
+```{r}
+library(tidyverse)
+library(edgeR)
+library(stringr)
+```
+
+Get the data.
+```{r}
+counts <- read.csv("ColShahCounts.csv.gz",row.names = 1)
+head(counts[,1:10])
+counts <- counts[,!str_detect(colnames(counts),"16A$")] #remove 16 hour time point...we know it is bad from other analyses
+```
+
+Plot raw counts
+```{r}
+pl.orig <- counts %>% colSums() %>% tibble(sample=names(.),count=.) %>%
+  ggplot(aes(x=sample,y=count)) + 
+  geom_col() +
+  theme(axis.text.x  = element_text(angle=90, vjust=0.5,size = 7)) 
+pl.orig
+```
+
+Remove samples with <= 1M counts, replot
+
+```{r}
+counts <- counts[,colSums(counts) > 1e06]
+pl.orig2 <- counts %>% colSums() %>% tibble(sample=names(.),count=.) %>%
+  ggplot(aes(x=sample,y=count)) + 
+  geom_col() +
+  theme(axis.text.x  = element_text(angle=90, vjust=0.5,size = 7)) 
+pl.orig2
+```
+
+
+Parse the sample names
+```{r}
+samples <- tibble(sample=colnames(counts))
+samples
+samples <- samples %>% 
+  separate(sample,
+           into=c("batch","gt","trt","time","extra"),
+           c(1,3,4,-2),
+           remove=FALSE) %>%
+  select(-extra) %>%
+  mutate(gt=ifelse(gt=="22","Col","Shah"), group=str_c(gt,trt,time,sep="_"))
+samples
+```
+
+create edgeR DGE object
+```{r}
+#confirm that everthing is in the right order
+all(colnames(counts)==samples$sample)
+dge <- DGEList(counts,
+               group=samples$group,
+               samples=samples)
+```
+
+Remove genes with very low expression, normalize, take a look
+```{r}
+dge <- dge[rowSums(cpm(dge)>1) >= 3,,keep.lib.sizes=FALSE]
+dge <- calcNormFactors(dge)
+ggplot(dge$samples,aes(x=sample,y=norm.factors,fill=gt)) + geom_col() + 
+  theme(axis.text.x  = element_text(angle=90, vjust=0.5,size = 7))
+ggplot(dge$samples,aes(x=sample,y=norm.factors,fill=trt)) + geom_col() + 
+  theme(axis.text.x  = element_text(angle=90, vjust=0.5,size = 7)) 
+ggplot(dge$samples,aes(x=sample,y=norm.factors,fill=time)) + geom_col() + 
+  theme(axis.text.x  = element_text(angle=90, vjust=0.5,size = 7)) 
+ggplot(dge$samples,aes(x=sample,y=norm.factors,fill=batch)) + geom_col() + 
+  theme(axis.text.x  = element_text(angle=90, vjust=0.5,size = 7)) 
+```
+
+Some batch effect but not too bad.
+
+Examine MDS plots
+```{r}
+mds <- plotMDS(dge,method = "bcv",labels=dge$samples$group,dim.plot = c(1,2),ndim=5)
+```
+
+make a better versions of the plot
+```{r}
+mds.pl <- as_tibble(mds$cmdscale.out) %>% 
+  bind_cols(data.frame(sample=row.names(mds$cmdscale.out)),.) %>%
+  inner_join(dge$samples)
+
+mds.pl %>% ggplot(aes(x=V1,y=V2, shape=gt, color=trt,label=time)) +
+  geom_point(size=3) + 
+  geom_text(nudge_x=.15) +
+  ggtitle("MDS DIM 1 vs 2")
+```
+
+Separates genotypes nicely.
+
+```{r}
+mds.pl %>% ggplot(aes(x=V2,y=V3, shape=gt, color=trt,label=time)) +
+  geom_point(size=3) + 
+  geom_text(nudge_x=.04) +
+  ggtitle("MDS DIM 2 vs 3")
+```
+Not very helpful
+
+```{r}
+mds.pl %>% ggplot(aes(x=V3,y=V4, shape=gt, color=trt,label=time)) +
+  geom_point(size=3) + 
+  geom_text(nudge_x=.05) +
+  ggtitle("MDS DIM 3 vs 4")
+```
+
+Not very helpful
+
+```{r}
+mds.pl %>% ggplot(aes(x=V4,y=V5, shape=gt, color=trt,label=time)) +
+  geom_point(size=3) + 
+  geom_text(nudge_x=.03) +
+  ggtitle("MDS DIM 4 vs 5")
+```
+
+So overall the MDS plots are not very encouraging...we have a clear separation by gt but not by anything else.
+
+I want to replot for each timepoint separately.
+
+```{r}
+for(t in unique(samples$time)) {
+  samples.subset <- samples %>% filter(time==t)
+  counts.subset <- counts[,str_detect(colnames(counts),str_c("[HL]",t,"A$"))]
+  dge.subset <- DGEList(counts.subset,
+               group=samples.subset$group,
+               samples=samples.subset)
+  dge.subset <- dge.subset[rowSums(cpm(dge.subset)>1) >= 3,,keep.lib.sizes=FALSE]
+dge.subset <- calcNormFactors(dge.subset)
+print(plotMDS(dge.subset,method = "bcv",labels=dge.subset$samples$group))
+}
+
+  
+```
+
