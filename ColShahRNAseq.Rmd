@@ -128,15 +128,29 @@ I want to replot for each timepoint separately.
 ```{r}
 for(t in unique(samples$time)) {
   samples.subset <- samples %>% filter(time==t)
-  counts.subset <- counts[,str_detect(colnames(counts),str_c("[HL]",t,"A$"))]
+  counts.subset <- counts[,colnames(counts) %in% samples.subset$sample]
   dge.subset <- DGEList(counts.subset,
                group=samples.subset$group,
                samples=samples.subset)
   dge.subset <- dge.subset[rowSums(cpm(dge.subset)>1) >= 3,,keep.lib.sizes=FALSE]
 dge.subset <- calcNormFactors(dge.subset)
-print(plotMDS(dge.subset,method = "bcv",labels=dge.subset$samples$group))
+plotMDS(dge.subset,method = "bcv",labels=dge.subset$samples$group)
 }
-
-  
 ```
 
+How about only Col?
+
+```{r}
+for(t in unique(samples$time)) {
+  samples.subset <- samples %>% filter(time==t,gt=="Col")
+  counts.subset <- counts[,colnames(counts) %in% samples.subset$sample]
+  dge.subset <- DGEList(counts.subset,
+               group=samples.subset$group,
+               samples=samples.subset)
+  dge.subset <- dge.subset[rowSums(cpm(dge.subset)>1) >= 3,,keep.lib.sizes=FALSE]
+dge.subset <- calcNormFactors(dge.subset)
+plotMDS(dge.subset,method = "bcv",labels=dge.subset$samples$group)
+}
+```
+
+Overall these look very discouraging. Not sure it is worth going forward. 
